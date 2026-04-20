@@ -1299,7 +1299,8 @@
     <div class="header-spacer"></div>
     <div class="header-actions">
       <button class="btn" onclick="resetAll()">重置</button>
-      <button class="btn" id="btn-copy-config" onclick="copyConfig()">Copy 配置</button>
+      <button class="btn" id="btn-copy-draft" onclick="copyDraftConfig()">Copy Config</button>
+      <button class="btn" id="btn-copy-config" onclick="copyConfig()">Copy 预设</button>
       <button class="btn btn-primary" onclick="exportPng()">下载 PNG</button>
       <button class="btn btn-primary" onclick="copyImage()">复制图片</button>
     </div>
@@ -2356,12 +2357,12 @@
         changes.decoration = currentDeco;
       }
 
-      const content = {};
-      if (document.getElementById('inp-label').value !== DEFAULT.label) content.label = document.getElementById('inp-label').value;
-      if (document.getElementById('inp-title').value !== DEFAULT.title) content.title = document.getElementById('inp-title').value;
-      if (document.getElementById('inp-subtitle').value !== DEFAULT.subtitle) content.subtitle = document.getElementById('inp-subtitle').value;
-      if (document.getElementById('inp-author').value !== DEFAULT.author) content.author = document.getElementById('inp-author').value;
-      if (Object.keys(content).length) changes.content = content;
+      changes.content = {
+        label:    document.getElementById('inp-label').value,
+        title:    document.getElementById('inp-title').value,
+        subtitle: document.getElementById('inp-subtitle').value,
+        author:   document.getElementById('inp-author').value,
+      };
 
       const visibility = {};
       Object.entries(visState).forEach(([field, value]) => {
@@ -2407,6 +2408,20 @@
         note: '请按以下配置新建一个快捷预设。未列出的字段保持默认。',
         changes,
       };
+    }
+
+    async function copyDraftConfig() {
+      const { changes } = buildConfigPayload();
+      const text = '```json\n"changes": ' + JSON.stringify(changes, null, 2) + '\n```';
+      try {
+        await writeTextToClipboard(text);
+        const btn = document.getElementById('btn-copy-draft');
+        const prev = btn.textContent;
+        btn.textContent = '已复制';
+        setTimeout(() => { btn.textContent = prev; }, 1200);
+      } catch (err) {
+        alert('复制失败：' + err);
+      }
     }
 
     async function copyConfig() {
@@ -2494,18 +2509,118 @@
         .catch(err => alert('截图失败：' + err));
     }
 
-    // ── Init ───────────────────────────────────────────────────────────────
-    document.getElementById('inp-label').value = DEFAULT.label;
-    document.getElementById('inp-title').value = DEFAULT.title;
-    document.getElementById('inp-subtitle').value = DEFAULT.subtitle;
-    document.getElementById('inp-author').value = DEFAULT.author;
+    // ── 从 draft.md 读取封面元数据 ─────────────────────────────────────────
+    async function loadDraftMeta() {
+      try {
+        const res = await fetch('./draft.md');
+        if (!res.ok) return null;
+        const text = await res.text();
+        const get = (key) => {
+          const m = text.match(new RegExp('^' + key + '：(.+)$', 'm'));
+          return m ? m[1].trim() : null;
+        };
+        // 解析 ```json ... ``` 块中的 "changes" 对象
+        let changes = null;
+        const jsonBlock = text.match(/```json\s*([\s\S]*?)```/);
+        if (jsonBlock) {
+          try {
+            const parsed = JSON.parse('{' + jsonBlock[1].trim() + '}');
+            changes = parsed.changes || null;
+          } catch (_) {}
+        }
+        return {
+          label:      changes?.content?.label    || null,
+          title:      changes?.content?.title    || null,
+          subtitle:   changes?.content?.subtitle || null,
+          author:     changes?.content?.author   || null,
+          typography: changes?.typography        || null,
+          background: changes?.background        || null,
+          font:       changes?.font              || null,
+          decoration: changes?.decoration        || null,
+          visibility: changes?.visibility        || null,
+          textColors: changes?.textColors        || null,
+        };
+      } catch (_) { return null; }
+    }
 
-    initFontPicker();
-    syncContent();
-    syncAllSliders();
-    initSourcePanel();
-    initPresets();
-    applyPreset(0);
+    // ── Init ───────────────────────────────────────────────────────────────
+    (async () => {
+      const meta = await loadDraftMeta();
+
+      initFontPicker();
+      syncContent();
+      syncAllSliders();
+      initSourcePanel();
+      initPresets();
+      applyPreset(0);
+
+      if (meta) {
+        if (meta.label)    document.getElementById('inp-label').value    = meta.label;
+        if (meta.title)    document.getElementById('inp-title').value    = meta.title;
+        if (meta.subtitle) document.getElementById('inp-subtitle').value = meta.subtitle;
+        if (meta.author)   document.getElementById('inp-author').value   = meta.author;
+
+        if (meta.background) {
+          const bg = meta.background;
+          if (bg.type === 'scheme') {
+            document.querySelectorAll('.color-btn').forEach(b => b.classList.toggle('active', +b.dataset.scheme === bg.index));
+            applyColorScheme(bg.index);
+          } else if (bg.type === 'custom') {
+            document.getElementById('inp-custom-bg').value = bg.value;
+            const lbl = document.getElementById('btn-custom-bg');
+            lbl.style.background = bg.value;
+            lbl.classList.add('has-custom', 'active');
+            document.querySelectorAll('.color-btn[data-scheme]').forEach(b => b.classList.remove('active'));
+            applyCustomColor(bg.value);
+          }
+        }
+
+        if (meta.font) {
+          document.getElementById('sel-font').value = meta.font.id;
+          applyFontChoice(meta.font.id);
+        }
+
+        if (meta.decoration) {
+          document.querySelectorAll('.deco-btn').forEach(b => b.classList.toggle('active', b.dataset.deco === meta.decoration));
+          applyDecoVis(meta.decoration);
+          currentDeco = meta.decoration;
+          buildDecorations(meta.decoration);
+        }
+
+        if (meta.visibility) {
+          Object.entries(meta.visibility).forEach(([field, show]) => {
+            if (visState[field] !== show) toggleVis(field);
+          });
+        }
+
+        if (meta.textColors) {
+          const colorMap = { label: 'clr-label', title: 'clr-title', subtitle: 'clr-subtitle', meta: 'clr-meta' };
+          const elMap = { label: '.label', title: 'h1', subtitle: '.subtitle', meta: '.meta' };
+          Object.entries(meta.textColors).forEach(([key, hex]) => {
+            if (colorMap[key]) {
+              document.getElementById(colorMap[key]).value = hex;
+              const el = document.querySelector('#cover-main ' + elMap[key]);
+              if (el) el.style.color = hex;
+            }
+          });
+        }
+
+        if (meta.typography) {
+          const typoMap = {
+            labelSize: 'sld-label', titleSize: 'sld-title', subtitleSize: 'sld-subtitle',
+            contentWidth: 'sld-width', titleLineHeight: 'sld-title-lh', subtitleLineHeight: 'sld-subtitle-lh',
+            titleMarginTop: 'sld-title-mt', titleMarginBottom: 'sld-title-mb',
+          };
+          Object.entries(meta.typography).forEach(([key, val]) => {
+            const el = document.getElementById(typoMap[key]);
+            if (el) el.value = val;
+          });
+          syncAllSliders();
+        }
+
+        syncContent();
+      }
+    })();
   </script>
 </body>
 

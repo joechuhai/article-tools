@@ -6,9 +6,10 @@
 
 ## 工具列表
 
-- **排版工具** (`index.html`) — Markdown 转微信公众号富文本，支持多种主题与代码高亮
 - **封面生成** (`cover.html`) — 生成公众号封面图，支持多种配色方案、装饰风格、字体，可添加素材图片，支持导出 PNG / 复制图片
 - **二维码生成** (`qrcode.html`) — 生成带 Logo 的二维码
+- **MD → 微信排版** (`md-to-wechat.html`) — Markdown 转微信公众号富文本格式
+- **MD → X 排版** (`md-to-x.html`) — Markdown 转适合 X（Twitter）发布的格式
 
 ## 使用方式
 
