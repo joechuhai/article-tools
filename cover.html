@@ -1281,6 +1281,24 @@
       z-index: 2;
       pointer-events: none;
     }
+
+    /* ── Background image overlay ── */
+    .cover-bg-overlay {
+      position: absolute;
+      inset: 0;
+      background: var(--c-bg);
+      pointer-events: none;
+    }
+
+    /* ── Bg panel thumbnail ── */
+    .bg-thumb-preview {
+      width: 100%;
+      aspect-ratio: 5 / 2;
+      object-fit: cover;
+      border-radius: 4px;
+      display: block;
+      border: 1.5px solid #e5e7eb;
+    }
   </style>
 </head>
 
@@ -1448,6 +1466,7 @@
       <div class="cover-zone">
         <div class="cover-wrapper">
           <div id="cover-main" class="cover">
+            <div class="cover-bg-overlay" id="cover-bg-overlay" style="display:none"></div>
             <div class="cover-content">
               <span class="label"></span>
               <h1></h1>
@@ -1506,6 +1525,33 @@
                   style="background:linear-gradient(135deg,#ea580c,#fbd38d)"></button>
                 <button class="color-btn" data-scheme="11" title="午夜"
                   style="background:linear-gradient(135deg,#1e1b4b,#4338ca)"></button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="psec">
+          <div class="psec-header">
+            <span class="psec-title">背景图 BG Image</span>
+            <div class="field-actions" id="bg-img-toggle-wrap" style="display:none">
+              <button class="vis-toggle on" id="toggle-bg-img" onclick="toggleBgImg()">显示</button>
+            </div>
+          </div>
+          <div id="bg-upload-row">
+            <label class="source-thumb-btn source-upload-btn" title="上传背景图" style="width:100%">
+              <span class="upload-icon">+</span>
+              <span>上传背景图</span>
+              <input type="file" id="inp-bg-img" accept="image/*" style="display:none">
+            </label>
+          </div>
+          <div id="bg-img-controls" style="display:none">
+            <img id="bg-img-thumb" class="bg-thumb-preview" alt="背景预览">
+            <button class="btn" onclick="clearBgImg()" style="width:100%;margin-top:6px">移除背景图</button>
+            <div class="field" style="margin-top:8px">
+              <label>叠色透明度</label>
+              <div class="slider-row">
+                <input id="sld-bg-overlay" type="range" min="0" max="1" step="0.05" value="0.55">
+                <span id="val-bg-overlay" class="slider-val">0.55</span>
               </div>
             </div>
           </div>
@@ -1580,6 +1626,75 @@
   </div><!-- /.layout -->
 
   <script>
+    // ── Background image ───────────────────────────────────────────────────
+    function applyBgImg() {
+      const cover = document.getElementById('cover-main');
+      const overlay = document.getElementById('cover-bg-overlay');
+      const controls = document.getElementById('bg-img-controls');
+      const uploadRow = document.getElementById('bg-upload-row');
+      const toggleWrap = document.getElementById('bg-img-toggle-wrap');
+
+      if (!bgImgState.dataUrl) {
+        cover.style.backgroundImage = '';
+        overlay.style.display = 'none';
+        controls.style.display = 'none';
+        uploadRow.style.display = '';
+        toggleWrap.style.display = 'none';
+        return;
+      }
+
+      cover.style.backgroundImage = bgImgState.visible ? `url('${bgImgState.dataUrl}')` : '';
+      cover.style.backgroundSize = 'cover';
+      cover.style.backgroundPosition = 'center';
+
+      overlay.style.display = bgImgState.visible ? '' : 'none';
+      overlay.style.opacity = bgImgState.overlayOpacity;
+
+      controls.style.display = '';
+      uploadRow.style.display = 'none';
+      toggleWrap.style.display = '';
+
+      const btn = document.getElementById('toggle-bg-img');
+      btn.textContent = bgImgState.visible ? '显示' : '隐藏';
+      btn.classList.toggle('on', bgImgState.visible);
+
+      document.getElementById('sld-bg-overlay').value = bgImgState.overlayOpacity;
+      document.getElementById('val-bg-overlay').textContent = bgImgState.overlayOpacity.toFixed(2);
+    }
+
+    function toggleBgImg() {
+      if (!bgImgState.dataUrl) return;
+      bgImgState.visible = !bgImgState.visible;
+      applyBgImg();
+    }
+
+    function clearBgImg() {
+      bgImgState.dataUrl = null;
+      bgImgState.visible = true;
+      bgImgState.overlayOpacity = 0.55;
+      applyBgImg();
+    }
+
+    function initBgImgPanel() {
+      document.getElementById('inp-bg-img').addEventListener('change', function () {
+        if (!this.files[0]) return;
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          bgImgState.dataUrl = reader.result;
+          bgImgState.visible = true;
+          document.getElementById('bg-img-thumb').src = reader.result;
+          applyBgImg();
+        };
+        reader.readAsDataURL(this.files[0]);
+      });
+
+      document.getElementById('sld-bg-overlay').addEventListener('input', function () {
+        bgImgState.overlayOpacity = +this.value;
+        document.getElementById('val-bg-overlay').textContent = (+this.value).toFixed(2);
+        if (bgImgState.dataUrl) document.getElementById('cover-bg-overlay').style.opacity = this.value;
+      });
+    }
+
     // ── Cover image ────────────────────────────────────────────────────────
     function applyCoverImg() {
       const img = document.getElementById('cover-img');
@@ -1804,6 +1919,7 @@
 
     const SOURCE_IMAGES = ['images/source/source1.png', 'images/source/source2.png', 'images/source/source3.png'];
     const coverImgState = { path: null, visible: true, size: 25, right: 3 };
+    const bgImgState = { dataUrl: null, visible: true, overlayOpacity: 0.55 };
 
     const FONT_OPTIONS = {
       default: { name: 'Noto Serif SC', family: "'Noto Serif SC', serif" },
@@ -2474,6 +2590,7 @@
       coverImgState.path = null; coverImgState.visible = true; coverImgState.size = 25; coverImgState.right = 3;
       document.querySelectorAll('.source-thumb-btn').forEach(b => b.classList.remove('active'));
       applyCoverImg();
+      clearBgImg();
       const p = RATIO_PRESETS['1200/480'];
       document.getElementById('sld-title').max = p.titleMax;
       document.getElementById('sld-subtitle').max = p.subtitleMax;
@@ -2612,6 +2729,7 @@
       syncContent();
       syncAllSliders();
       initSourcePanel();
+      initBgImgPanel();
       initPresets();
       applyPreset(0);
 
